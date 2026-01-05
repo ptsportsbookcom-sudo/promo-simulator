@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStorage } from "@/lib/storage";
 import type { PromotionConfig } from "@/lib/models/types";
+import { migrateLegacyPromotion } from "@/lib/models/migration";
 
 export async function GET(
   request: NextRequest,
@@ -9,13 +10,18 @@ export async function GET(
   try {
     const { id } = await params;
     const storage = getStorage();
-    const promotion = await storage.getPromotion(id);
+    let promotion = await storage.getPromotion(id);
 
     if (!promotion) {
       return NextResponse.json(
         { error: "Promotion not found" },
         { status: 404 }
       );
+    }
+
+    // Migrate if legacy format
+    if ((promotion as any).type && !("trigger" in promotion)) {
+      promotion = migrateLegacyPromotion(promotion as any);
     }
 
     return NextResponse.json({ promotion });
@@ -35,7 +41,13 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const promotion: PromotionConfig = { ...body, id };
+    let promotion: PromotionConfig = { ...body, id };
+
+    // Migrate if legacy format
+    if ((promotion as any).type && !("trigger" in promotion)) {
+      promotion = migrateLegacyPromotion(promotion as any);
+      promotion.id = id; // Ensure ID is preserved
+    }
 
     const storage = getStorage();
     const existing = await storage.getPromotion(id);

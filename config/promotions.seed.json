@@ -2,13 +2,13 @@
   {
     "id": "provider-explorer",
     "name": "Provider Explorer",
-    "type": "game_provider_discovery",
     "enabled": true,
     "startAt": "2024-01-01T00:00:00.000Z",
     "endAt": "2025-12-31T23:59:59.999Z",
     "requiresOptIn": false,
-    "triggers": {
-      "first_win_on_provider": true
+    "trigger": {
+      "kind": "first_win",
+      "subject": "provider"
     },
     "mechanic": {
       "type": "collection",
@@ -29,13 +29,13 @@
   {
     "id": "3-game-chain",
     "name": "3-Game Chain",
-    "type": "multi_game_chain",
     "enabled": true,
     "startAt": "2024-01-01T00:00:00.000Z",
     "endAt": "2025-12-31T23:59:59.999Z",
     "requiresOptIn": false,
-    "triggers": {
-      "win_on_distinct_game": true
+    "trigger": {
+      "kind": "distinct_items",
+      "subject": "game"
     },
     "mechanic": {
       "type": "collection",
@@ -56,16 +56,15 @@
   {
     "id": "opt-in-high-win-ladder",
     "name": "Opt-in High Win Ladder",
-    "type": "opt_in_outcome_challenge",
     "enabled": true,
     "startAt": "2024-01-01T00:00:00.000Z",
     "endAt": "2025-12-31T23:59:59.999Z",
     "requiresOptIn": true,
-    "triggers": {
-      "winMultiplier": {
-        "min": 10,
-        "max": 999
-      }
+    "trigger": {
+      "kind": "win_multiplier_range",
+      "subject": null,
+      "minMultiplier": 10,
+      "maxMultiplier": 999
     },
     "mechanic": {
       "type": "ladder",
@@ -108,14 +107,15 @@
   {
     "id": "high-range-hits",
     "name": "High-Range Hits",
-    "type": "high_range_outcome",
     "enabled": true,
     "startAt": "2024-01-01T00:00:00.000Z",
     "endAt": "2025-12-31T23:59:59.999Z",
     "requiresOptIn": false,
-    "highRange": {
-      "min": 15,
-      "max": 19.99,
+    "trigger": {
+      "kind": "win_multiplier_range",
+      "subject": null,
+      "minMultiplier": 15,
+      "maxMultiplier": 19.99,
       "instantReward": {
         "type": "instant_reward",
         "amount": 30,
@@ -124,20 +124,23 @@
       "alsoProgress": true
     },
     "mechanic": {
-      "type": "collection",
-      "collection": {
-        "targetCount": 5,
-        "collectBy": "gameId"
+      "type": "ladder",
+      "ladder": {
+        "levels": [
+          {
+            "level": 1,
+            "requirement": 5,
+            "reward": {
+              "type": "instant_reward",
+              "amount": 200,
+              "label": "High-Range Collection Complete"
+            }
+          }
+        ]
       }
-    },
-    "defaultReward": {
-      "type": "instant_reward",
-      "amount": 200,
-      "label": "High-Range Collection Complete"
     },
     "cooldownMinutes": 5,
     "maxRewardsPerDay": 20,
     "maxRewardsTotal": 200
   }
 ]
-

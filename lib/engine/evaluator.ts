@@ -10,6 +10,7 @@ import { isEligible } from "./eligibility";
 import { checkTrigger } from "./triggers";
 import { checkCaps } from "./caps";
 import { applyLadder, applyCollection, getCollectionItem } from "./mechanics";
+import { createHybridPromotion } from "./adapter";
 
 /**
  * Evaluate an event against a promotion and return evaluation result
@@ -19,6 +20,8 @@ export function evaluateEvent(
   promotion: PromotionConfig,
   playerState: PlayerState | null
 ): EvaluationResult {
+  // Adapt promotion to work with existing evaluation logic
+  const adaptedPromotion = createHybridPromotion(promotion);
   const result: EvaluationResult = {
     promotionId: promotion.id,
     eligible: false,
@@ -29,7 +32,7 @@ export function evaluateEvent(
   const playerPromoState = playerState?.promotions[promotion.id] || null;
 
   // Step 1: Check eligibility
-  const eligibility = isEligible(event, promotion, playerPromoState);
+  const eligibility = isEligible(event, adaptedPromotion, playerPromoState);
   result.eligible = eligibility.eligible;
   result.reasons.push(...eligibility.reasons);
 
@@ -38,7 +41,7 @@ export function evaluateEvent(
   }
 
   // Step 2: Check trigger
-  const trigger = checkTrigger(event, promotion, playerPromoState);
+  const trigger = checkTrigger(event, adaptedPromotion, playerPromoState);
   if (!trigger.triggered) {
     result.reasons.push(...trigger.reasons);
     return result;
@@ -50,23 +53,24 @@ export function evaluateEvent(
   let reward: RewardPayload | null = null;
   let mechanicReasons: string[] = [];
 
-  // High-range can have instant reward
-  if (promotion.type === "high_range_outcome" && promotion.highRange?.instantReward) {
-    reward = promotion.highRange.instantReward;
+  // High-range can have instant reward (check adapted promotion)
+  const highRange = (adaptedPromotion as any).highRange;
+  if ((adaptedPromotion as any).type === "high_range_outcome" && highRange?.instantReward) {
+    reward = highRange.instantReward;
     mechanicReasons.push("High-range instant reward triggered");
   }
 
   // Apply ladder or collection mechanic (if alsoProgress is true for high-range, or for other types)
   const shouldApplyMechanic =
-    promotion.type !== "high_range_outcome" ||
-    promotion.highRange?.alsoProgress === true;
+    (adaptedPromotion as any).type !== "high_range_outcome" ||
+    highRange?.alsoProgress === true;
 
   if (shouldApplyMechanic) {
     if (promotion.mechanic.type === "ladder") {
       const ladderResult = applyLadder(promotion, playerPromoState, 1);
       if (ladderResult.reward) {
         // For high-range with instant reward, prefer instant reward, otherwise use ladder reward
-        if (promotion.type !== "high_range_outcome" || !promotion.highRange?.instantReward) {
+        if ((adaptedPromotion as any).type !== "high_range_outcome" || !highRange?.instantReward) {
           reward = ladderResult.reward;
         }
       }
@@ -77,7 +81,7 @@ export function evaluateEvent(
         const collectionResult = applyCollection(promotion, playerPromoState, collectionItem);
         if (collectionResult.reward) {
           // For high-range with instant reward, prefer instant reward, otherwise use collection reward
-          if (promotion.type !== "high_range_outcome" || !promotion.highRange?.instantReward) {
+          if ((adaptedPromotion as any).type !== "high_range_outcome" || !highRange?.instantReward) {
             reward = collectionResult.reward;
           }
         }
@@ -154,9 +158,11 @@ export function updatePlayerState(
 
   // Update progress based on mechanic
   if (evaluation.fired) {
+    const adaptedPromotion = createHybridPromotion(promotion);
+    const highRange = (adaptedPromotion as any).highRange;
     const shouldApplyMechanic =
-      promotion.type !== "high_range_outcome" ||
-      promotion.highRange?.alsoProgress === true;
+      (adaptedPromotion as any).type !== "high_range_outcome" ||
+      highRange?.alsoProgress === true;
 
     if (shouldApplyMechanic) {
       if (promotion.mechanic.type === "ladder") {

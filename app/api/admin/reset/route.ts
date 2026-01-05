@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStorage } from "@/lib/storage";
 import seedPromotions from "@/config/promotions.seed.json";
 import type { PromotionConfig } from "@/lib/models/types";
+import { migrateLegacyPromotion } from "@/lib/models/migration";
 
 export async function POST() {
   try {
@@ -10,9 +11,10 @@ export async function POST() {
     // Clear all data
     await storage.reset();
 
-    // Load seed promotions
-    for (const promo of seedPromotions as PromotionConfig[]) {
-      await storage.savePromotion(promo);
+    // Load seed promotions (migrate if needed)
+    for (const promo of seedPromotions as any[]) {
+      const migrated = migrateLegacyPromotion(promo);
+      await storage.savePromotion(migrated);
     }
 
     return NextResponse.json({

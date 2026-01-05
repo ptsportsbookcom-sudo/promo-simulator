@@ -39,41 +39,50 @@ export function isEligible(
     }
   }
 
-  // Check game filters
-  if (promotion.includeGames && promotion.includeGames.length > 0) {
-    if (!promotion.includeGames.includes(event.gameId)) {
+  // Check game filters (support both new scope and legacy includeGames)
+  const includeGames = (promotion as any).includeGames || promotion.scope?.games;
+  const excludeGames = (promotion as any).excludeGames;
+  
+  if (includeGames && includeGames.length > 0) {
+    if (!includeGames.includes(event.gameId)) {
       reasons.push(`Game ${event.gameId} not in include list`);
       return { eligible: false, reasons };
     }
   }
 
-  if (promotion.excludeGames && promotion.excludeGames.includes(event.gameId)) {
+  if (excludeGames && excludeGames.includes(event.gameId)) {
     reasons.push(`Game ${event.gameId} is excluded`);
     return { eligible: false, reasons };
   }
 
-  // Check provider filters
-  if (promotion.includeProviders && promotion.includeProviders.length > 0) {
-    if (!promotion.includeProviders.includes(event.providerId)) {
+  // Check provider filters (support both new scope and legacy includeProviders)
+  const includeProviders = (promotion as any).includeProviders || promotion.scope?.providers;
+  const excludeProviders = (promotion as any).excludeProviders;
+  
+  if (includeProviders && includeProviders.length > 0) {
+    if (!includeProviders.includes(event.providerId)) {
       reasons.push(`Provider ${event.providerId} not in include list`);
       return { eligible: false, reasons };
     }
   }
 
-  if (promotion.excludeProviders && promotion.excludeProviders.includes(event.providerId)) {
+  if (excludeProviders && excludeProviders.includes(event.providerId)) {
     reasons.push(`Provider ${event.providerId} is excluded`);
     return { eligible: false, reasons };
   }
 
-  // Check vertical filters
-  if (promotion.includeVerticals && promotion.includeVerticals.length > 0) {
-    if (!promotion.includeVerticals.includes(event.vertical)) {
+  // Check vertical filters (support both new scope and legacy includeVerticals)
+  const includeVerticals = (promotion as any).includeVerticals || promotion.scope?.verticals;
+  const excludeVerticals = (promotion as any).excludeVerticals;
+  
+  if (includeVerticals && includeVerticals.length > 0) {
+    if (!includeVerticals.includes(event.vertical)) {
       reasons.push(`Vertical ${event.vertical} not in include list`);
       return { eligible: false, reasons };
     }
   }
 
-  if (promotion.excludeVerticals && promotion.excludeVerticals.includes(event.vertical)) {
+  if (excludeVerticals && excludeVerticals.includes(event.vertical)) {
     reasons.push(`Vertical ${event.vertical} is excluded`);
     return { eligible: false, reasons };
   }

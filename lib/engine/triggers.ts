@@ -9,10 +9,14 @@ export function checkTrigger(
   playerState: PlayerPromotionState | null
 ): { triggered: boolean; reasons: string[] } {
   const reasons: string[] = [];
-  const triggers = promotion.triggers || {};
+  
+  // Support both new composition model and legacy model
+  const legacyType = (promotion as any).type;
+  const triggers = (promotion as any).triggers || {};
+  const highRange = (promotion as any).highRange;
 
-  // Type-specific trigger checks
-  if (promotion.type === "game_provider_discovery") {
+  // Type-specific trigger checks (legacy or adapted)
+  if (legacyType === "game_provider_discovery") {
     if (triggers.first_win_on_game && event.winMultiplier > 0) {
       // Check if this is first win on this game for this player
       const hasWonOnGame = playerState?.progress.collectedItems.includes(event.gameId);
@@ -39,7 +43,7 @@ export function checkTrigger(
     }
   }
 
-  if (promotion.type === "multi_game_chain") {
+  if (legacyType === "multi_game_chain") {
     if (triggers.win_on_distinct_game && event.winMultiplier > 0) {
       const collected = playerState?.progress.collectedItems || [];
       if (!collected.includes(event.gameId)) {
@@ -65,7 +69,7 @@ export function checkTrigger(
     }
   }
 
-  if (promotion.type === "opt_in_outcome_challenge") {
+  if (legacyType === "opt_in_outcome_challenge") {
     // For opt-in challenges, triggers are typically based on winMultiplier thresholds
     if (triggers.winMultiplier) {
       const min = triggers.winMultiplier.min ?? 0;
@@ -77,9 +81,9 @@ export function checkTrigger(
     }
   }
 
-  if (promotion.type === "high_range_outcome") {
-    if (promotion.highRange) {
-      const { min, max } = promotion.highRange;
+  if (legacyType === "high_range_outcome") {
+    if (highRange) {
+      const { min, max } = highRange;
       if (event.winMultiplier >= min && event.winMultiplier <= max) {
         reasons.push(`High-range outcome: ${event.winMultiplier}x (range: ${min}-${max})`);
         return { triggered: true, reasons };
