@@ -17,6 +17,17 @@ export function checkTrigger(
 
   // Type-specific trigger checks (legacy or adapted)
   if (legacyType === "game_provider_discovery") {
+    // Check outcome filter if present
+    const outcomeFilter = (promotion as any).trigger?.outcomeFilter || triggers.winMultiplier;
+    if (outcomeFilter) {
+      const min = outcomeFilter.minMultiplier ?? 0;
+      const max = outcomeFilter.maxMultiplier ?? Infinity;
+      if (event.winMultiplier < min || event.winMultiplier > max) {
+        reasons.push(`Win multiplier ${event.winMultiplier} outside filter range [${min}, ${max}]`);
+        return { triggered: false, reasons };
+      }
+    }
+
     if (triggers.first_win_on_game && event.winMultiplier > 0) {
       // Check if this is first win on this game for this player
       const hasWonOnGame = playerState?.progress.collectedItems.includes(event.gameId);
@@ -44,6 +55,17 @@ export function checkTrigger(
   }
 
   if (legacyType === "multi_game_chain") {
+    // Check outcome filter if present
+    const outcomeFilter = (promotion as any).trigger?.outcomeFilter || triggers.winMultiplier;
+    if (outcomeFilter) {
+      const min = outcomeFilter.minMultiplier ?? 0;
+      const max = outcomeFilter.maxMultiplier ?? Infinity;
+      if (event.winMultiplier < min || event.winMultiplier > max) {
+        reasons.push(`Win multiplier ${event.winMultiplier} outside filter range [${min}, ${max}]`);
+        return { triggered: false, reasons };
+      }
+    }
+
     if (triggers.win_on_distinct_game && event.winMultiplier > 0) {
       const collected = playerState?.progress.collectedItems || [];
       if (!collected.includes(event.gameId)) {

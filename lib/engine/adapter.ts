@@ -44,38 +44,48 @@ export function adaptPromotionForEvaluation(
     triggers: {},
   };
 
-  // Map trigger to legacy type and triggers
-  if (promotion.trigger.kind === "first_win") {
+  // Map trigger family to legacy type and triggers
+  if (promotion.trigger.family === "discovery") {
     legacy.type = "game_provider_discovery";
-    if (promotion.trigger.subject === "game") {
+    if (promotion.trigger.discoveryTarget === "first_win_on_game") {
       legacy.triggers!.first_win_on_game = true;
-    } else if (promotion.trigger.subject === "provider") {
+    } else if (promotion.trigger.discoveryTarget === "first_win_on_provider") {
       legacy.triggers!.first_win_on_provider = true;
-    } else if (promotion.trigger.subject === "vertical") {
-      legacy.triggers!.first_win_on_provider = true; // fallback to provider
-    }
-  } else if (promotion.trigger.kind === "distinct_items") {
-    legacy.type = "multi_game_chain";
-    if (promotion.trigger.subject === "game") {
-      legacy.triggers!.win_on_distinct_game = true;
-    } else if (promotion.trigger.subject === "provider") {
-      legacy.triggers!.win_on_distinct_provider = true;
-    } else if (promotion.trigger.subject === "vertical") {
-      legacy.triggers!.win_on_distinct_vertical = true;
-    }
-  } else if (promotion.trigger.kind === "win_multiplier_range") {
-    // Check if it's opt-in (requiresOptIn) or high-range
-    if (promotion.requiresOptIn) {
-      legacy.type = "opt_in_outcome_challenge";
     } else {
-      legacy.type = "high_range_outcome";
-      legacy.highRange = {
-        min: promotion.trigger.minMultiplier || 0,
-        max: promotion.trigger.maxMultiplier || 999,
-        instantReward: promotion.trigger.instantReward,
-        alsoProgress: promotion.trigger.alsoProgress,
+      // Default to provider
+      legacy.triggers!.first_win_on_provider = true;
+    }
+    // Add outcome filter if present
+    if (promotion.trigger.outcomeFilter) {
+      legacy.triggers!.winMultiplier = {
+        min: promotion.trigger.outcomeFilter.minMultiplier,
+        max: promotion.trigger.outcomeFilter.maxMultiplier,
       };
     }
+  } else if (promotion.trigger.family === "multi_game_chain") {
+    legacy.type = "multi_game_chain";
+    if (promotion.trigger.distinctDimension === "game") {
+      legacy.triggers!.win_on_distinct_game = true;
+    } else if (promotion.trigger.distinctDimension === "provider") {
+      legacy.triggers!.win_on_distinct_provider = true;
+    } else if (promotion.trigger.distinctDimension === "vertical") {
+      legacy.triggers!.win_on_distinct_vertical = true;
+    }
+    // Add outcome filter if present
+    if (promotion.trigger.outcomeFilter) {
+      legacy.triggers!.winMultiplier = {
+        min: promotion.trigger.outcomeFilter.minMultiplier,
+        max: promotion.trigger.outcomeFilter.maxMultiplier,
+      };
+    }
+  } else if (promotion.trigger.family === "high_range_outcome") {
+    legacy.type = "high_range_outcome";
+    legacy.highRange = {
+      min: promotion.trigger.minMultiplier || 0,
+      max: promotion.trigger.maxMultiplier || 999,
+      instantReward: promotion.trigger.instantReward,
+      alsoProgress: promotion.trigger.alsoProgress,
+    };
     legacy.triggers!.winMultiplier = {
       min: promotion.trigger.minMultiplier,
       max: promotion.trigger.maxMultiplier,

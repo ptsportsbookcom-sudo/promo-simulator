@@ -93,55 +93,71 @@ export function migrateLegacyPromotion(
   if (legacy.type === "game_provider_discovery") {
     if (legacy.triggers?.first_win_on_provider) {
       newConfig.trigger = {
-        kind: "first_win",
-        subject: "provider",
+        family: "discovery",
+        discoveryTarget: "first_win_on_provider",
       };
     } else if (legacy.triggers?.first_win_on_game) {
       newConfig.trigger = {
-        kind: "first_win",
-        subject: "game",
+        family: "discovery",
+        discoveryTarget: "first_win_on_game",
       };
     } else {
       newConfig.trigger = {
-        kind: "first_win",
-        subject: "provider",
+        family: "discovery",
+        discoveryTarget: "first_win_on_provider",
+      };
+    }
+    // Migrate outcome filter if present
+    if (legacy.triggers?.winMultiplier) {
+      newConfig.trigger.outcomeFilter = {
+        minMultiplier: legacy.triggers.winMultiplier.min,
+        maxMultiplier: legacy.triggers.winMultiplier.max,
       };
     }
   } else if (legacy.type === "multi_game_chain") {
     if (legacy.triggers?.win_on_distinct_game) {
       newConfig.trigger = {
-        kind: "distinct_items",
-        subject: "game",
+        family: "multi_game_chain",
+        distinctDimension: "game",
+        requiredDistinctCount: 3, // default
       };
     } else if (legacy.triggers?.win_on_distinct_provider) {
       newConfig.trigger = {
-        kind: "distinct_items",
-        subject: "provider",
+        family: "multi_game_chain",
+        distinctDimension: "provider",
+        requiredDistinctCount: 3, // default
       };
     } else if (legacy.triggers?.win_on_distinct_vertical) {
       newConfig.trigger = {
-        kind: "distinct_items",
-        subject: "vertical",
+        family: "multi_game_chain",
+        distinctDimension: "vertical",
+        requiredDistinctCount: 3, // default
       };
     } else {
       newConfig.trigger = {
-        kind: "distinct_items",
-        subject: "game",
+        family: "multi_game_chain",
+        distinctDimension: "game",
+        requiredDistinctCount: 3, // default
+      };
+    }
+    // Migrate outcome filter if present
+    if (legacy.triggers?.winMultiplier) {
+      newConfig.trigger.outcomeFilter = {
+        minMultiplier: legacy.triggers.winMultiplier.min,
+        maxMultiplier: legacy.triggers.winMultiplier.max,
       };
     }
   } else if (legacy.type === "opt_in_outcome_challenge") {
     const multiplier = legacy.triggers?.winMultiplier;
     newConfig.trigger = {
-      kind: "win_multiplier_range",
-      subject: null,
+      family: "high_range_outcome",
       minMultiplier: multiplier?.min || 0,
       maxMultiplier: multiplier?.max || 999,
     };
   } else if (legacy.type === "high_range_outcome") {
     const highRange = legacy.highRange || legacy.triggers?.winMultiplier;
     newConfig.trigger = {
-      kind: "win_multiplier_range",
-      subject: null,
+      family: "high_range_outcome",
       minMultiplier: highRange?.min || legacy.triggers?.winMultiplier?.min || 0,
       maxMultiplier:
         highRange?.max || legacy.triggers?.winMultiplier?.max || 999,
@@ -151,8 +167,8 @@ export function migrateLegacyPromotion(
   } else {
     // Default fallback
     newConfig.trigger = {
-      kind: "first_win",
-      subject: "provider",
+      family: "discovery",
+      discoveryTarget: "first_win_on_provider",
     };
   }
 

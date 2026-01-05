@@ -3,16 +3,19 @@
 import { useState, useEffect } from "react";
 import type {
   PromotionConfig,
-  TriggerKind,
-  TriggerSubject,
+  TriggerFamily,
+  DiscoveryTarget,
+  DistinctDimension,
   MechanicType,
   PlayerState,
   LogEntry,
 } from "@/lib/models/types";
+import { GAMES } from "@/lib/data/games";
 
 export default function AdminPage() {
   const [promotions, setPromotions] = useState<PromotionConfig[]>([]);
   const [selectedPromo, setSelectedPromo] = useState<PromotionConfig | null>(null);
+  const [editingPromo, setEditingPromo] = useState<PromotionConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -26,15 +29,9 @@ export default function AdminPage() {
   const [formData, setFormData] = useState<Partial<PromotionConfig>>({
     enabled: true,
     requiresOptIn: false,
-    trigger: {
-      kind: "first_win",
-      subject: "provider",
-    },
-    mechanic: { type: "collection" },
   });
 
   useEffect(() => {
-    // Initialize seed data if needed
     fetch("/api/init").then(() => {
       loadPromotions();
     });
@@ -69,8 +66,9 @@ export default function AdminPage() {
     try {
       await fetch(`/api/admin/promotions/${id}`, { method: "DELETE" });
       await loadPromotions();
-      if (selectedPromo?.id === id) {
-        setSelectedPromo(null);
+      if (editingPromo?.id === id) {
+        setEditingPromo(null);
+        setFormData({ enabled: true, requiresOptIn: false });
       }
     } catch (error) {
       console.error("Error deleting promotion:", error);
@@ -78,12 +76,12 @@ export default function AdminPage() {
   };
 
   const handleEdit = (promo: PromotionConfig) => {
-    setSelectedPromo(promo);
+    setEditingPromo(promo);
     setFormData(promo);
   };
 
   const handleNew = () => {
-    setSelectedPromo(null);
+    setEditingPromo(null);
     setFormData({
       id: "",
       name: "",
@@ -91,49 +89,49 @@ export default function AdminPage() {
       startAt: new Date().toISOString(),
       endAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       requiresOptIn: false,
-      trigger: {
-        kind: "first_win",
-        subject: "provider",
-      },
-      mechanic: { type: "collection" },
     });
   };
 
-  // Get valid mechanic types for current trigger
-  const getValidMechanics = (triggerKind: TriggerKind): MechanicType[] => {
-    if (triggerKind === "first_win") {
-      return ["collection"]; // first_win → collection only
-    } else if (triggerKind === "distinct_items") {
-      return ["ladder", "collection"]; // distinct_items → ladder OR collection
-    } else if (triggerKind === "win_multiplier_range") {
-      return ["ladder"]; // win_multiplier_range → ladder only
-    }
-    return ["ladder", "collection"];
+  const handleCancel = () => {
+    setEditingPromo(null);
+    setFormData({ enabled: true, requiresOptIn: false });
   };
 
   const validateForm = (): string[] => {
     const errs: string[] = [];
     if (!formData.id) errs.push("ID is required");
     if (!formData.name) errs.push("Name is required");
-    if (!formData.trigger) errs.push("Trigger is required");
-    if (!formData.trigger?.kind) errs.push("Trigger kind is required");
+    if (!formData.trigger) errs.push("Trigger family is required");
+    if (!formData.trigger?.family) errs.push("Please select a trigger type");
     if (!formData.startAt) errs.push("Start date is required");
     if (!formData.endAt) errs.push("End date is required");
     if (new Date(formData.endAt!) <= new Date(formData.startAt!)) {
       errs.push("End date must be after start date");
     }
     if (!formData.mechanic) errs.push("Mechanic is required");
-    
-    // Validate trigger/mechanic combination
-    if (formData.trigger && formData.mechanic) {
-      const validMechanics = getValidMechanics(formData.trigger.kind);
-      if (!validMechanics.includes(formData.mechanic.type)) {
-        errs.push(
-          `Invalid mechanic "${formData.mechanic.type}" for trigger "${formData.trigger.kind}". Valid: ${validMechanics.join(", ")}`
-        );
+
+    // Trigger-specific validation
+    if (formData.trigger?.family === "discovery") {
+      if (!formData.trigger.discoveryTarget) {
+        errs.push("Discovery target is required");
+      }
+    } else if (formData.trigger?.family === "multi_game_chain") {
+      if (!formData.trigger.distinctDimension) {
+        errs.push("Distinct dimension is required");
+      }
+      if (!formData.trigger.requiredDistinctCount || formData.trigger.requiredDistinctCount < 1) {
+        errs.push("Required distinct count must be at least 1");
+      }
+    } else if (formData.trigger?.family === "high_range_outcome") {
+      if (formData.trigger.minMultiplier === undefined || formData.trigger.minMultiplier < 0) {
+        errs.push("Min multiplier is required and must be >= 0");
+      }
+      if (formData.trigger.maxMultiplier === undefined || formData.trigger.maxMultiplier <= formData.trigger.minMultiplier!) {
+        errs.push("Max multiplier is required and must be > min multiplier");
       }
     }
 
+    // Mechanic validation
     if (formData.mechanic?.type === "ladder" && !formData.mechanic.ladder?.levels?.length) {
       errs.push("Ladder must have at least one level");
     }
@@ -144,6 +142,10 @@ export default function AdminPage() {
     ) {
       errs.push("Collection must have targetCount or targetSet");
     }
+    if (formData.mechanic?.type === "collection" && !formData.mechanic.collection?.collectBy) {
+      errs.push("Collection collectBy is required");
+    }
+
     return errs;
   };
 
@@ -157,6 +159,23 @@ export default function AdminPage() {
 
     setLoading(true);
     try {
+      // Clean up trigger - remove fields not relevant to selected family
+      const trigger = { ...formData.trigger! };
+      if (trigger.family === "discovery") {
+        delete (trigger as any).distinctDimension;
+        delete (trigger as any).requiredDistinctCount;
+        delete (trigger as any).minMultiplier;
+        delete (trigger as any).maxMultiplier;
+      } else if (trigger.family === "multi_game_chain") {
+        delete (trigger as any).discoveryTarget;
+        delete (trigger as any).minMultiplier;
+        delete (trigger as any).maxMultiplier;
+      } else if (trigger.family === "high_range_outcome") {
+        delete (trigger as any).discoveryTarget;
+        delete (trigger as any).distinctDimension;
+        delete (trigger as any).requiredDistinctCount;
+      }
+
       const promo: PromotionConfig = {
         id: formData.id!,
         name: formData.name!,
@@ -164,7 +183,7 @@ export default function AdminPage() {
         startAt: formData.startAt!,
         endAt: formData.endAt!,
         requiresOptIn: formData.requiresOptIn ?? false,
-        trigger: formData.trigger!,
+        trigger: trigger,
         scope: formData.scope,
         mechanic: formData.mechanic!,
         cooldownMinutes: formData.cooldownMinutes,
@@ -173,10 +192,10 @@ export default function AdminPage() {
         defaultReward: formData.defaultReward,
       };
 
-      const url = selectedPromo
+      const url = editingPromo
         ? `/api/admin/promotions/${promo.id}`
         : "/api/admin/promotions";
-      const method = selectedPromo ? "PUT" : "POST";
+      const method = editingPromo ? "PUT" : "POST";
 
       const res = await fetch(url, {
         method,
@@ -187,7 +206,7 @@ export default function AdminPage() {
       if (res.ok) {
         setMessage("Promotion saved successfully!");
         await loadPromotions();
-        setSelectedPromo(null);
+        handleCancel();
       } else {
         const data = await res.json();
         setErrors([data.error || "Failed to save promotion"]);
@@ -224,9 +243,13 @@ export default function AdminPage() {
     }
   };
 
-  const validMechanics = formData.trigger
-    ? getValidMechanics(formData.trigger.kind)
-    : ["ladder", "collection"];
+  // Get unique providers and games for scope selection
+  const uniqueProviders = Array.from(new Set(GAMES.map((g) => g.providerId))).map((id) => ({
+    id,
+    name: GAMES.find((g) => g.providerId === id)?.providerName || id,
+  }));
+
+  const uniqueGames = GAMES.map((g) => ({ id: g.id, name: g.name }));
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
@@ -263,254 +286,547 @@ export default function AdminPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Promotions List */}
-          <div className="lg:col-span-1">
-            <div className="bg-slate-800 rounded-lg p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-semibold">Promotions</h2>
-                <button
-                  onClick={handleNew}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded"
+        {!editingPromo ? (
+          /* PROMOTIONS LIST VIEW */
+          <div className="bg-slate-800 rounded-lg p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-semibold">Promotions</h2>
+              <button
+                onClick={handleNew}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded"
+              >
+                + Create Promotion
+              </button>
+            </div>
+            <div className="space-y-2">
+              {promotions.map((promo) => (
+                <div
+                  key={promo.id}
+                  className="p-4 rounded border border-slate-700 bg-slate-700/50 hover:bg-slate-700/70 cursor-pointer"
+                  onClick={() => handleEdit(promo)}
                 >
-                  + New
-                </button>
-              </div>
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {promotions.map((promo) => (
-                  <div
-                    key={promo.id}
-                    className={`p-3 rounded border ${
-                      selectedPromo?.id === promo.id
-                        ? "border-purple-500 bg-purple-900/30"
-                        : "border-slate-700 bg-slate-700/50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="font-semibold">{promo.name}</div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-semibold text-lg">{promo.name}</div>
+                      <div className="text-sm text-gray-400 mt-1">
+                        Trigger: {promo.trigger.family} | Mechanic: {promo.mechanic.type} |{" "}
+                        {promo.enabled ? "Enabled" : "Disabled"}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => handleToggleEnabled(promo)}
-                        className={`px-2 py-1 rounded text-xs ${
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleEnabled(promo);
+                        }}
+                        className={`px-3 py-1 rounded text-xs ${
                           promo.enabled ? "bg-green-600" : "bg-gray-600"
                         }`}
                       >
                         {promo.enabled ? "ON" : "OFF"}
                       </button>
-                    </div>
-                    <div className="text-xs text-gray-400 mb-2">
-                      {promo.trigger.kind} / {promo.mechanic.type}
-                    </div>
-                    <div className="flex gap-2">
                       <button
-                        onClick={() => handleEdit(promo)}
-                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(promo.id)}
-                        className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(promo.id);
+                        }}
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
                       >
                         Delete
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
+              {promotions.length === 0 && (
+                <div className="text-center text-gray-400 py-8">
+                  No promotions yet. Click "+ Create Promotion" to get started.
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Form */}
-          <div className="lg:col-span-2">
-            <div className="bg-slate-800 rounded-lg p-6">
-              <h2 className="text-2xl font-semibold mb-4">
-                {selectedPromo ? "Edit Promotion" : "New Promotion"}
+        ) : (
+          /* PROMOTION EDITOR */
+          <div className="bg-slate-800 rounded-lg p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-semibold">
+                {editingPromo ? "Edit Promotion" : "Create Promotion"}
               </h2>
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded"
+              >
+                Cancel
+              </button>
+            </div>
 
-              <div className="space-y-6 max-h-[700px] overflow-y-auto">
-                {/* Promotion Basics */}
-                <div className="p-4 bg-slate-700/50 rounded">
-                  <h3 className="font-semibold mb-3">Promotion Basics</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block mb-2">ID</label>
+            <div className="space-y-6 max-h-[800px] overflow-y-auto">
+              {/* Promotion Basics */}
+              <div className="p-4 bg-slate-700/50 rounded">
+                <h3 className="font-semibold mb-3">Promotion Basics</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block mb-2">ID</label>
+                    <input
+                      type="text"
+                      value={formData.id || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, id: e.target.value })
+                      }
+                      className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                      disabled={!!editingPromo}
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-2">Name</label>
+                    <input
+                      type="text"
+                      value={formData.name || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
+                      className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                    />
+                  </div>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2">
                       <input
-                        type="text"
-                        value={formData.id || ""}
+                        type="checkbox"
+                        checked={formData.enabled ?? true}
                         onChange={(e) =>
-                          setFormData({ ...formData, id: e.target.value })
+                          setFormData({ ...formData, enabled: e.target.checked })
+                        }
+                        className="w-5 h-5"
+                      />
+                      Enabled
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block mb-2">Start Date</label>
+                      <input
+                        type="datetime-local"
+                        value={
+                          formData.startAt
+                            ? new Date(formData.startAt).toISOString().slice(0, 16)
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            startAt: new Date(e.target.value).toISOString(),
+                          })
                         }
                         className="w-full px-4 py-2 bg-slate-700 rounded text-white"
-                        disabled={!!selectedPromo}
                       />
                     </div>
-
                     <div>
-                      <label className="block mb-2">Name</label>
+                      <label className="block mb-2">End Date</label>
                       <input
-                        type="text"
-                        value={formData.name || ""}
+                        type="datetime-local"
+                        value={
+                          formData.endAt
+                            ? new Date(formData.endAt).toISOString().slice(0, 16)
+                            : ""
+                        }
                         onChange={(e) =>
-                          setFormData({ ...formData, name: e.target.value })
+                          setFormData({
+                            ...formData,
+                            endAt: new Date(e.target.value).toISOString(),
+                          })
                         }
                         className="w-full px-4 py-2 bg-slate-700 rounded text-white"
                       />
-                    </div>
-
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.enabled ?? true}
-                          onChange={(e) =>
-                            setFormData({ ...formData, enabled: e.target.checked })
-                          }
-                          className="w-5 h-5"
-                        />
-                        Enabled
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.requiresOptIn ?? false}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              requiresOptIn: e.target.checked,
-                            })
-                          }
-                          className="w-5 h-5"
-                        />
-                        Requires Opt-In
-                      </label>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block mb-2">Start Date</label>
-                        <input
-                          type="datetime-local"
-                          value={
-                            formData.startAt
-                              ? new Date(formData.startAt).toISOString().slice(0, 16)
-                              : ""
-                          }
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              startAt: new Date(e.target.value).toISOString(),
-                            })
-                          }
-                          className="w-full px-4 py-2 bg-slate-700 rounded text-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block mb-2">End Date</label>
-                        <input
-                          type="datetime-local"
-                          value={
-                            formData.endAt
-                              ? new Date(formData.endAt).toISOString().slice(0, 16)
-                              : ""
-                          }
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              endAt: new Date(e.target.value).toISOString(),
-                            })
-                          }
-                          className="w-full px-4 py-2 bg-slate-700 rounded text-white"
-                        />
-                      </div>
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* Trigger */}
+              {/* STEP 1: TRIGGER SELECTION */}
+              <div className="p-4 bg-slate-700/50 rounded">
+                <h3 className="font-semibold mb-3">Step 1: Trigger Type (Required)</h3>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 p-3 border border-slate-600 rounded hover:bg-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="triggerFamily"
+                      value="discovery"
+                      checked={formData.trigger?.family === "discovery"}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          trigger: {
+                            family: "discovery",
+                            discoveryTarget: "first_win_on_provider",
+                          },
+                          mechanic: { type: "collection" },
+                        })
+                      }
+                      className="w-5 h-5"
+                    />
+                    <span>Discovery</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-3 border border-slate-600 rounded hover:bg-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="triggerFamily"
+                      value="multi_game_chain"
+                      checked={formData.trigger?.family === "multi_game_chain"}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          trigger: {
+                            family: "multi_game_chain",
+                            distinctDimension: "game",
+                            requiredDistinctCount: 3,
+                          },
+                          mechanic: { type: "collection" },
+                        })
+                      }
+                      className="w-5 h-5"
+                    />
+                    <span>Multi-Game Chain</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-3 border border-slate-600 rounded hover:bg-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="triggerFamily"
+                      value="high_range_outcome"
+                      checked={formData.trigger?.family === "high_range_outcome"}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          trigger: {
+                            family: "high_range_outcome",
+                            minMultiplier: 15,
+                            maxMultiplier: 20,
+                          },
+                          mechanic: { type: "ladder" },
+                        })
+                      }
+                      className="w-5 h-5"
+                    />
+                    <span>High-Range Outcome</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* STEP 2: CONDITIONAL PARAMETERS */}
+              {formData.trigger?.family && (
                 <div className="p-4 bg-slate-700/50 rounded">
-                  <h3 className="font-semibold mb-3">Trigger</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block mb-2">Trigger Kind</label>
-                      <select
-                        value={formData.trigger?.kind || "first_win"}
-                        onChange={(e) => {
-                          const kind = e.target.value as TriggerKind;
-                          const newTrigger = {
-                            kind,
-                            subject:
-                              kind === "win_multiplier_range"
-                                ? null
-                                : (formData.trigger?.subject || "provider"),
-                            minMultiplier:
-                              kind === "win_multiplier_range"
-                                ? formData.trigger?.minMultiplier || 0
-                                : undefined,
-                            maxMultiplier:
-                              kind === "win_multiplier_range"
-                                ? formData.trigger?.maxMultiplier || 100
-                                : undefined,
-                            instantReward: formData.trigger?.instantReward,
-                            alsoProgress: formData.trigger?.alsoProgress,
-                          };
-                          setFormData({
-                            ...formData,
-                            trigger: newTrigger,
-                            // Auto-adjust mechanic if invalid
-                            mechanic:
-                              !getValidMechanics(kind).includes(
-                                formData.mechanic?.type || "ladder"
-                              )
-                                ? { type: getValidMechanics(kind)[0] as MechanicType }
-                                : formData.mechanic,
-                          });
-                        }}
-                        className="w-full px-4 py-2 bg-slate-700 rounded text-white"
-                      >
-                        <option value="first_win">First Win</option>
-                        <option value="distinct_items">Distinct Items</option>
-                        <option value="win_multiplier_range">
-                          Win Multiplier Range
-                        </option>
-                      </select>
-                    </div>
+                  <h3 className="font-semibold mb-3">Step 2: Trigger Parameters</h3>
 
-                    {formData.trigger?.kind !== "win_multiplier_range" && (
+                  {/* DISCOVERY */}
+                  {formData.trigger.family === "discovery" && (
+                    <div className="space-y-4">
                       <div>
-                        <label className="block mb-2">Subject</label>
-                        <select
-                          value={formData.trigger?.subject || "provider"}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              trigger: {
-                                ...formData.trigger!,
-                                subject: e.target.value as TriggerSubject,
-                              },
-                            })
-                          }
-                          className="w-full px-4 py-2 bg-slate-700 rounded text-white"
-                        >
-                          <option value="game">Game</option>
-                          <option value="provider">Provider</option>
-                          <option value="vertical">Vertical</option>
-                        </select>
+                        <label className="block mb-2">Discovery Target</label>
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="discoveryTarget"
+                              value="first_win_on_game"
+                              checked={
+                                formData.trigger.discoveryTarget === "first_win_on_game"
+                              }
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  trigger: {
+                                    family: "discovery",
+                                    discoveryTarget: e.target.value as DiscoveryTarget,
+                                    outcomeFilter: formData.trigger?.outcomeFilter,
+                                  },
+                                  mechanic: {
+                                    type: "collection",
+                                    collection: {
+                                      ...formData.mechanic?.collection,
+                                      collectBy: "gameId",
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-5 h-5"
+                            />
+                            First win on game
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="discoveryTarget"
+                              value="first_win_on_provider"
+                              checked={
+                                formData.trigger.discoveryTarget === "first_win_on_provider"
+                              }
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  trigger: {
+                                    ...formData.trigger!,
+                                    family: "discovery",
+                                    discoveryTarget: e.target.value as DiscoveryTarget,
+                                  },
+                                  mechanic: {
+                                    type: "collection",
+                                    collection: {
+                                      ...formData.mechanic?.collection,
+                                      collectBy: "providerId",
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-5 h-5"
+                            />
+                            First win on provider
+                          </label>
+                        </div>
                       </div>
-                    )}
-
-                    {formData.trigger?.kind === "win_multiplier_range" && (
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block mb-2">Min Multiplier</label>
+                          <label className="block mb-2">Min Win Multiplier (optional)</label>
                           <input
                             type="number"
                             step="0.01"
-                            value={formData.trigger?.minMultiplier || 0}
+                            value={formData.trigger.outcomeFilter?.minMultiplier || ""}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
                                 trigger: {
                                   ...formData.trigger!,
+                                  family: formData.trigger!.family,
+                                  outcomeFilter: {
+                                    ...formData.trigger?.outcomeFilter,
+                                    minMultiplier: e.target.value
+                                      ? parseFloat(e.target.value)
+                                      : undefined,
+                                    maxMultiplier: formData.trigger?.outcomeFilter?.maxMultiplier,
+                                  },
+                                },
+                              })
+                            }
+                            className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                            placeholder="Optional"
+                          />
+                        </div>
+                        <div>
+                          <label className="block mb-2">Max Win Multiplier (optional)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={formData.trigger.outcomeFilter?.maxMultiplier || ""}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                trigger: {
+                                  ...formData.trigger!,
+                                  outcomeFilter: {
+                                    ...formData.trigger?.outcomeFilter,
+                                    minMultiplier: formData.trigger?.outcomeFilter?.minMultiplier,
+                                    maxMultiplier: e.target.value
+                                      ? parseFloat(e.target.value)
+                                      : undefined,
+                                  },
+                                },
+                              })
+                            }
+                            className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                            placeholder="Optional"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MULTI-GAME CHAIN */}
+                  {formData.trigger.family === "multi_game_chain" && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block mb-2">Distinct Dimension</label>
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="distinctDimension"
+                              value="game"
+                              checked={formData.trigger.distinctDimension === "game"}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  trigger: {
+                                    ...formData.trigger!,
+                                    family: "multi_game_chain",
+                                    distinctDimension: e.target.value as DistinctDimension,
+                                  },
+                                  mechanic: {
+                                    type: formData.mechanic?.type || "collection",
+                                    collection: {
+                                      ...formData.mechanic?.collection,
+                                      collectBy: "gameId",
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-5 h-5"
+                            />
+                            Games
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="distinctDimension"
+                              value="provider"
+                              checked={formData.trigger.distinctDimension === "provider"}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  trigger: {
+                                    ...formData.trigger!,
+                                    family: "multi_game_chain",
+                                    distinctDimension: e.target.value as DistinctDimension,
+                                  },
+                                  mechanic: {
+                                    type: formData.mechanic?.type || "collection",
+                                    collection: {
+                                      ...formData.mechanic?.collection,
+                                      collectBy: "providerId",
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-5 h-5"
+                            />
+                            Providers
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="distinctDimension"
+                              value="vertical"
+                              checked={formData.trigger.distinctDimension === "vertical"}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  trigger: {
+                                    ...formData.trigger!,
+                                    family: "multi_game_chain",
+                                    distinctDimension: e.target.value as DistinctDimension,
+                                  },
+                                  mechanic: {
+                                    type: formData.mechanic?.type || "collection",
+                                    collection: {
+                                      ...formData.mechanic?.collection,
+                                      collectBy: "vertical",
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-5 h-5"
+                            />
+                            Verticals
+                          </label>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block mb-2">Required Distinct Count</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={formData.trigger.requiredDistinctCount || 3}
+                          onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                trigger: {
+                                  ...formData.trigger!,
+                                  family: "multi_game_chain",
+                                  requiredDistinctCount: parseInt(e.target.value) || 1,
+                                },
+                              mechanic: {
+                                type: formData.mechanic?.type || "collection",
+                                collection: {
+                                  ...formData.mechanic?.collection,
+                                  collectBy: formData.mechanic?.collection?.collectBy || "gameId",
+                                  targetCount: parseInt(e.target.value) || 1,
+                                },
+                              },
+                            })
+                          }
+                          className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block mb-2">Min Win Multiplier (optional)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={formData.trigger.outcomeFilter?.minMultiplier || ""}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                trigger: {
+                                  ...formData.trigger!,
+                                  family: formData.trigger!.family,
+                                  outcomeFilter: {
+                                    ...formData.trigger?.outcomeFilter,
+                                    minMultiplier: e.target.value
+                                      ? parseFloat(e.target.value)
+                                      : undefined,
+                                    maxMultiplier: formData.trigger?.outcomeFilter?.maxMultiplier,
+                                  },
+                                },
+                              })
+                            }
+                            className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                            placeholder="Optional"
+                          />
+                        </div>
+                        <div>
+                          <label className="block mb-2">Max Win Multiplier (optional)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={formData.trigger.outcomeFilter?.maxMultiplier || ""}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                trigger: {
+                                  ...formData.trigger!,
+                                  outcomeFilter: {
+                                    ...formData.trigger?.outcomeFilter,
+                                    minMultiplier: formData.trigger?.outcomeFilter?.minMultiplier,
+                                    maxMultiplier: e.target.value
+                                      ? parseFloat(e.target.value)
+                                      : undefined,
+                                  },
+                                },
+                              })
+                            }
+                            className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                            placeholder="Optional"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* HIGH-RANGE OUTCOME */}
+                  {formData.trigger.family === "high_range_outcome" && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block mb-2">Min Win Multiplier (required)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={formData.trigger.minMultiplier || 15}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                trigger: {
+                                  ...formData.trigger!,
+                                  family: "high_range_outcome",
                                   minMultiplier: parseFloat(e.target.value) || 0,
                                 },
                               })
@@ -519,17 +835,18 @@ export default function AdminPage() {
                           />
                         </div>
                         <div>
-                          <label className="block mb-2">Max Multiplier</label>
+                          <label className="block mb-2">Max Win Multiplier (required)</label>
                           <input
                             type="number"
                             step="0.01"
-                            value={formData.trigger?.maxMultiplier || 100}
+                            value={formData.trigger.maxMultiplier || 20}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
                                 trigger: {
                                   ...formData.trigger!,
-                                  maxMultiplier: parseFloat(e.target.value) || 100,
+                                  family: "high_range_outcome",
+                                  maxMultiplier: parseFloat(e.target.value) || 0,
                                 },
                               })
                             }
@@ -537,11 +854,13 @@ export default function AdminPage() {
                           />
                         </div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
+              )}
 
-                {/* Scope */}
+              {/* SCOPE */}
+              {formData.trigger?.family && (
                 <div className="p-4 bg-slate-700/50 rounded">
                   <h3 className="font-semibold mb-3">Scope / Filters</h3>
                   <div className="space-y-4">
@@ -562,8 +881,11 @@ export default function AdminPage() {
                           })
                         }
                         className="w-full px-4 py-2 bg-slate-700 rounded text-white"
-                        placeholder="game-1, game-2, game-3"
+                        placeholder="game-1, game-2"
                       />
+                      <div className="text-xs text-gray-400 mt-1">
+                        Available: {uniqueGames.map((g) => g.id).join(", ")}
+                      </div>
                     </div>
                     <div>
                       <label className="block mb-2">Providers (comma-separated IDs)</label>
@@ -584,6 +906,9 @@ export default function AdminPage() {
                         className="w-full px-4 py-2 bg-slate-700 rounded text-white"
                         placeholder="provider-1, provider-2"
                       />
+                      <div className="text-xs text-gray-400 mt-1">
+                        Available: {uniqueProviders.map((p) => p.id).join(", ")}
+                      </div>
                     </div>
                     <div>
                       <label className="block mb-2">Verticals</label>
@@ -616,15 +941,17 @@ export default function AdminPage() {
                     </div>
                   </div>
                 </div>
+              )}
 
-                {/* Mechanic */}
+              {/* MECHANIC */}
+              {formData.trigger?.family && (
                 <div className="p-4 bg-slate-700/50 rounded">
                   <h3 className="font-semibold mb-3">Mechanic</h3>
                   <div className="space-y-4">
                     <div>
                       <label className="block mb-2">Mechanic Type</label>
                       <select
-                        value={formData.mechanic?.type || "ladder"}
+                        value={formData.mechanic?.type || "collection"}
                         onChange={(e) => {
                           const type = e.target.value as MechanicType;
                           setFormData({
@@ -634,53 +961,48 @@ export default function AdminPage() {
                               ladder: type === "ladder" ? formData.mechanic?.ladder : undefined,
                               collection:
                                 type === "collection"
-                                  ? formData.mechanic?.collection
+                                  ? formData.mechanic?.collection || {
+                                      collectBy:
+                                        formData.trigger?.discoveryTarget === "first_win_on_game"
+                                          ? "gameId"
+                                          : formData.trigger?.distinctDimension === "game"
+                                          ? "gameId"
+                                          : formData.trigger?.distinctDimension === "provider"
+                                          ? "providerId"
+                                          : "vertical",
+                                    }
                                   : undefined,
                             },
                           });
                         }}
-                        className={`w-full px-4 py-2 bg-slate-700 rounded text-white ${
-                          !validMechanics.includes(formData.mechanic?.type || "ladder")
-                            ? "border-2 border-red-500"
-                            : ""
-                        }`}
-                        disabled={
-                          !validMechanics.includes(formData.mechanic?.type || "ladder")
-                        }
+                        className="w-full px-4 py-2 bg-slate-700 rounded text-white"
                       >
-                        <option value="ladder" disabled={!validMechanics.includes("ladder")}>
-                          Ladder {!validMechanics.includes("ladder") && "(Invalid)"}
-                        </option>
-                        <option
-                          value="collection"
-                          disabled={!validMechanics.includes("collection")}
-                        >
-                          Collection{" "}
-                          {!validMechanics.includes("collection") && "(Invalid)"}
-                        </option>
+                        {formData.trigger.family === "discovery" && (
+                          <option value="collection">Collection (default)</option>
+                        )}
+                        {formData.trigger.family === "multi_game_chain" && (
+                          <>
+                            <option value="collection">Collection (default)</option>
+                            <option value="ladder">Ladder (optional)</option>
+                          </>
+                        )}
+                        {formData.trigger.family === "high_range_outcome" && (
+                          <>
+                            <option value="ladder">Ladder (default)</option>
+                            <option value="collection">Collection (optional)</option>
+                          </>
+                        )}
                       </select>
-                      {!validMechanics.includes(formData.mechanic?.type || "ladder") && (
-                        <div className="text-red-400 text-sm mt-1">
-                          Invalid mechanic for trigger "{formData.trigger?.kind}". Valid:{" "}
-                          {validMechanics.join(", ")}
-                        </div>
-                      )}
                     </div>
 
-                    {/* Ladder config would go here - simplified for now */}
-                    {formData.mechanic?.type === "ladder" && (
-                      <div className="text-sm text-gray-400">
-                        Ladder configuration: Add levels in JSON editor
-                      </div>
-                    )}
-
-                    {/* Collection config */}
                     {formData.mechanic?.type === "collection" && (
                       <div className="space-y-4">
                         <div>
-                          <label className="block mb-2">Collect By</label>
-                          <select
-                            value={formData.mechanic.collection?.collectBy || "gameId"}
+                          <label className="block mb-2">Target Count</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={formData.mechanic.collection?.targetCount || ""}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
@@ -688,49 +1010,63 @@ export default function AdminPage() {
                                   ...formData.mechanic!,
                                   collection: {
                                     ...formData.mechanic?.collection,
-                                    collectBy: e.target.value as
-                                      | "gameId"
-                                      | "providerId"
-                                      | "vertical",
+                                    collectBy:
+                                      formData.mechanic?.collection?.collectBy ||
+                                      (formData.trigger?.discoveryTarget === "first_win_on_game"
+                                        ? "gameId"
+                                        : formData.trigger?.discoveryTarget === "first_win_on_provider"
+                                        ? "providerId"
+                                        : formData.trigger?.distinctDimension === "game"
+                                        ? "gameId"
+                                        : formData.trigger?.distinctDimension === "provider"
+                                        ? "providerId"
+                                        : "vertical"),
+                                    targetCount: parseInt(e.target.value) || undefined,
                                   },
                                 },
                               })
                             }
                             className="w-full px-4 py-2 bg-slate-700 rounded text-white"
-                          >
-                            <option value="gameId">Game ID</option>
-                            <option value="providerId">Provider ID</option>
-                            <option value="vertical">Vertical</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block mb-2">Target Count</label>
-                          <input
-                            type="number"
-                            value={formData.mechanic.collection?.targetCount || ""}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                mechanic: {
-                                  ...formData.mechanic!,
-                                    collection: {
-                                      ...formData.mechanic?.collection,
-                                      collectBy: formData.mechanic?.collection?.collectBy || "gameId",
-                                      targetCount: parseInt(e.target.value) || undefined,
-                                    },
-                                },
-                              })
-                            }
-                            className="w-full px-4 py-2 bg-slate-700 rounded text-white"
-                            placeholder="e.g., 3"
                           />
                         </div>
                       </div>
                     )}
+
+                    {formData.mechanic?.type === "ladder" && (
+                      <div className="text-sm text-gray-400">
+                        Ladder levels: Configure in JSON editor or add UI for levels later
+                      </div>
+                    )}
                   </div>
                 </div>
+              )}
 
-                {/* Limits */}
+              {/* OPT-IN */}
+              {formData.trigger?.family && (
+                <div className="p-4 bg-slate-700/50 rounded">
+                  <h3 className="font-semibold mb-3">Opt-In (Gate Only)</h3>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.requiresOptIn ?? false}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          requiresOptIn: e.target.checked,
+                        })
+                      }
+                      className="w-5 h-5"
+                    />
+                    Requires player opt-in (Join button)
+                  </label>
+                  <div className="text-xs text-gray-400 mt-2">
+                    If checked, promotion will only evaluate after player joins
+                  </div>
+                </div>
+              )}
+
+              {/* LIMITS */}
+              {formData.trigger?.family && (
                 <div className="p-4 bg-slate-700/50 rounded">
                   <h3 className="font-semibold mb-3">Limits</h3>
                   <div className="grid grid-cols-3 gap-4">
@@ -778,26 +1114,31 @@ export default function AdminPage() {
                     </div>
                   </div>
                 </div>
+              )}
 
-                {/* JSON Preview */}
+              {/* JSON Preview */}
+              {formData.trigger?.family && (
                 <div>
                   <label className="block mb-2">JSON Preview</label>
                   <pre className="p-4 bg-slate-700 rounded text-xs overflow-auto max-h-60">
                     {JSON.stringify(formData, null, 2)}
                   </pre>
                 </div>
+              )}
 
+              {/* Save Button */}
+              {formData.trigger?.family && (
                 <button
                   onClick={handleSave}
-                  disabled={loading}
+                  disabled={loading || !formData.trigger?.family}
                   className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:opacity-50"
                 >
                   {loading ? "Saving..." : "Save Promotion"}
                 </button>
-              </div>
+              )}
             </div>
           </div>
-        </div>
+        )}
 
         {/* Player Inspector */}
         <div className="mt-6 bg-slate-800 rounded-lg p-6">
@@ -825,24 +1166,6 @@ export default function AdminPage() {
                 <pre className="p-4 bg-slate-700 rounded text-xs overflow-auto max-h-60">
                   {JSON.stringify(inspectedPlayer.playerState, null, 2)}
                 </pre>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2">Recent Logs</h3>
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {inspectedPlayer.logs.map((log, idx) => (
-                    <div key={idx} className="p-3 bg-slate-700 rounded text-sm">
-                      <div className="text-gray-400 mb-1">
-                        {new Date(log.timestamp).toLocaleString()}
-                      </div>
-                      <div>
-                        Event: {log.event.gameId} - {log.event.winMultiplier}x
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        Evaluations: {log.evaluations.length}
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           )}

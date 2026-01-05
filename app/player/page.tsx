@@ -213,7 +213,7 @@ export default function PlayerPage() {
                     >
                       <div className="font-semibold mb-2">{promo.name}</div>
                       <div className="text-sm text-gray-400 mb-3">
-                        {promo.trigger.kind} / {promo.mechanic.type}
+                        {promo.trigger.family} / {promo.mechanic.type}
                       </div>
 
                       {promo.requiresOptIn && (

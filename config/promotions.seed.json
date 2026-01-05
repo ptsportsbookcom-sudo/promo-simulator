@@ -1,41 +1,55 @@
 [
   {
-    "id": "provider-explorer",
-    "name": "Provider Explorer",
+    "id": "provider-discovery-pragmatic-5x",
+    "name": "Provider Discovery – Pragmatic ≥5x",
     "enabled": true,
     "startAt": "2024-01-01T00:00:00.000Z",
     "endAt": "2025-12-31T23:59:59.999Z",
     "requiresOptIn": false,
     "trigger": {
-      "kind": "first_win",
-      "subject": "provider"
+      "family": "discovery",
+      "discoveryTarget": "first_win_on_provider",
+      "outcomeFilter": {
+        "minMultiplier": 5
+      }
+    },
+    "scope": {
+      "providers": ["provider-pragmatic"],
+      "verticals": ["slots"]
     },
     "mechanic": {
       "type": "collection",
       "collection": {
-        "targetCount": 2,
+        "targetCount": 1,
         "collectBy": "providerId"
       }
     },
     "defaultReward": {
       "type": "instant_reward",
       "amount": 50,
-      "label": "Provider Explorer Bonus"
+      "label": "Provider Discovery Bonus"
     },
     "cooldownMinutes": 0,
     "maxRewardsPerDay": 10,
     "maxRewardsTotal": 100
   },
   {
-    "id": "3-game-chain",
-    "name": "3-Game Chain",
+    "id": "3-game-chain-5x",
+    "name": "3-Game Chain ≥5x",
     "enabled": true,
     "startAt": "2024-01-01T00:00:00.000Z",
     "endAt": "2025-12-31T23:59:59.999Z",
     "requiresOptIn": false,
     "trigger": {
-      "kind": "distinct_items",
-      "subject": "game"
+      "family": "multi_game_chain",
+      "distinctDimension": "game",
+      "requiredDistinctCount": 3,
+      "outcomeFilter": {
+        "minMultiplier": 5
+      }
+    },
+    "scope": {
+      "verticals": ["slots"]
     },
     "mechanic": {
       "type": "collection",
@@ -54,17 +68,19 @@
     "maxRewardsTotal": 50
   },
   {
-    "id": "opt-in-high-win-ladder",
-    "name": "Opt-in High Win Ladder",
+    "id": "high-range-hits-15x-20x",
+    "name": "High-Range Hits 15x–20x",
     "enabled": true,
     "startAt": "2024-01-01T00:00:00.000Z",
     "endAt": "2025-12-31T23:59:59.999Z",
-    "requiresOptIn": true,
+    "requiresOptIn": false,
     "trigger": {
-      "kind": "win_multiplier_range",
-      "subject": null,
-      "minMultiplier": 10,
-      "maxMultiplier": 999
+      "family": "high_range_outcome",
+      "minMultiplier": 15,
+      "maxMultiplier": 20
+    },
+    "scope": {
+      "verticals": ["slots"]
     },
     "mechanic": {
       "type": "ladder",
@@ -75,8 +91,8 @@
             "requirement": 1,
             "reward": {
               "type": "instant_reward",
-              "amount": 25,
-              "label": "Level 1: First High Win"
+              "amount": 30,
+              "label": "High-Range Hit"
             }
           },
           {
@@ -84,8 +100,8 @@
             "requirement": 3,
             "reward": {
               "type": "instant_reward",
-              "amount": 75,
-              "label": "Level 2: Three High Wins"
+              "amount": 100,
+              "label": "Three High-Range Hits"
             }
           },
           {
@@ -93,47 +109,8 @@
             "requirement": 5,
             "reward": {
               "type": "instant_reward",
-              "amount": 150,
-              "label": "Level 3: Five High Wins"
-            }
-          }
-        ]
-      }
-    },
-    "cooldownMinutes": 0,
-    "maxRewardsPerDay": 10,
-    "maxRewardsTotal": 100
-  },
-  {
-    "id": "high-range-hits",
-    "name": "High-Range Hits",
-    "enabled": true,
-    "startAt": "2024-01-01T00:00:00.000Z",
-    "endAt": "2025-12-31T23:59:59.999Z",
-    "requiresOptIn": false,
-    "trigger": {
-      "kind": "win_multiplier_range",
-      "subject": null,
-      "minMultiplier": 15,
-      "maxMultiplier": 19.99,
-      "instantReward": {
-        "type": "instant_reward",
-        "amount": 30,
-        "label": "High-Range Hit Bonus"
-      },
-      "alsoProgress": true
-    },
-    "mechanic": {
-      "type": "ladder",
-      "ladder": {
-        "levels": [
-          {
-            "level": 1,
-            "requirement": 5,
-            "reward": {
-              "type": "instant_reward",
               "amount": 200,
-              "label": "High-Range Collection Complete"
+              "label": "Five High-Range Hits"
             }
           }
         ]

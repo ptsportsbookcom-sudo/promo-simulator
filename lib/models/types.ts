@@ -15,11 +15,14 @@ export type RewardType = "instant_reward" | "entry" | "progress_only";
 // Mechanic types
 export type MechanicType = "ladder" | "collection";
 
-// Trigger kinds
-export type TriggerKind = "first_win" | "distinct_items" | "win_multiplier_range";
+// Trigger families (ONLY these 3)
+export type TriggerFamily = "discovery" | "multi_game_chain" | "high_range_outcome";
 
-// Trigger subject (what the trigger applies to)
-export type TriggerSubject = "game" | "provider" | "vertical" | null;
+// Discovery target
+export type DiscoveryTarget = "first_win_on_game" | "first_win_on_provider";
+
+// Distinct dimension for multi-game chain
+export type DistinctDimension = "game" | "provider" | "vertical";
 
 // Reward payload
 export interface RewardPayload {
@@ -42,13 +45,29 @@ export interface CollectionConfig {
   collectBy: "gameId" | "providerId" | "vertical"; // what to collect
 }
 
-// Trigger configuration
+// Trigger configuration (composition-based)
 export interface TriggerConfig {
-  kind: TriggerKind;
-  subject: TriggerSubject; // null for win_multiplier_range
-  minMultiplier?: number; // for win_multiplier_range
-  maxMultiplier?: number; // for win_multiplier_range
-  instantReward?: RewardPayload; // optional instant reward for win_multiplier_range
+  family: TriggerFamily;
+  
+  // Discovery-specific
+  discoveryTarget?: DiscoveryTarget; // required if family = "discovery"
+  
+  // Multi-Game Chain-specific
+  distinctDimension?: DistinctDimension; // required if family = "multi_game_chain"
+  requiredDistinctCount?: number; // required if family = "multi_game_chain"
+  
+  // High-Range Outcome-specific
+  minMultiplier?: number; // required if family = "high_range_outcome"
+  maxMultiplier?: number; // required if family = "high_range_outcome"
+  
+  // Outcome filter (optional for Discovery and Multi-Game Chain)
+  outcomeFilter?: {
+    minMultiplier?: number;
+    maxMultiplier?: number;
+  };
+  
+  // High-Range specific rewards
+  instantReward?: RewardPayload; // optional instant reward for high_range_outcome
   alsoProgress?: boolean; // if true, also counts toward ladder/collection
 }
 
