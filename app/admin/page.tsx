@@ -81,7 +81,8 @@ export default function AdminPage() {
   };
 
   const handleNew = () => {
-    setEditingPromo(null);
+    // Use empty object with no id to indicate "new" mode
+    setEditingPromo({ id: "" } as PromotionConfig);
     setFormData({
       id: "",
       name: "",
@@ -289,68 +290,68 @@ export default function AdminPage() {
         {!editingPromo ? (
           /* PROMOTIONS LIST VIEW */
           <div className="bg-slate-800 rounded-lg p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-semibold">Promotions</h2>
-              <button
-                onClick={handleNew}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded"
-              >
-                + Create Promotion
-              </button>
-            </div>
-            <div className="space-y-2">
-              {promotions.map((promo) => (
-                <div
-                  key={promo.id}
-                  className="p-4 rounded border border-slate-700 bg-slate-700/50 hover:bg-slate-700/70 cursor-pointer"
-                  onClick={() => handleEdit(promo)}
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-semibold">Promotions</h2>
+                <button
+                  onClick={handleNew}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="font-semibold text-lg">{promo.name}</div>
-                      <div className="text-sm text-gray-400 mt-1">
-                        Trigger: {promo.trigger.family} | Mechanic: {promo.mechanic.type} |{" "}
-                        {promo.enabled ? "Enabled" : "Disabled"}
+                  + Create Promotion
+                </button>
+              </div>
+              <div className="space-y-2">
+                {promotions.map((promo) => (
+                  <div
+                    key={promo.id}
+                    className="p-4 rounded border border-slate-700 bg-slate-700/50 hover:bg-slate-700/70 cursor-pointer"
+                    onClick={() => handleEdit(promo)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="font-semibold text-lg">{promo.name}</div>
+                        <div className="text-sm text-gray-400 mt-1">
+                          Trigger: {promo.trigger.family} | Mechanic: {promo.mechanic.type} |{" "}
+                          {promo.enabled ? "Enabled" : "Disabled"}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleEnabled(promo);
+                          }}
+                          className={`px-3 py-1 rounded text-xs ${
+                            promo.enabled ? "bg-green-600" : "bg-gray-600"
+                          }`}
+                        >
+                          {promo.enabled ? "ON" : "OFF"}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(promo.id);
+                          }}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleEnabled(promo);
-                        }}
-                        className={`px-3 py-1 rounded text-xs ${
-                          promo.enabled ? "bg-green-600" : "bg-gray-600"
-                        }`}
-                      >
-                        {promo.enabled ? "ON" : "OFF"}
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(promo.id);
-                        }}
-                        className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
-                      >
-                        Delete
-                      </button>
-                    </div>
                   </div>
-                </div>
-              ))}
-              {promotions.length === 0 && (
-                <div className="text-center text-gray-400 py-8">
-                  No promotions yet. Click "+ Create Promotion" to get started.
-                </div>
-              )}
+                ))}
+                {promotions.length === 0 && (
+                  <div className="text-center text-gray-400 py-8">
+                    No promotions yet. Click "+ Create Promotion" to get started.
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
         ) : (
-          /* PROMOTION EDITOR */
+          /* PROMOTION EDITOR (NEW OR EDIT) */
           <div className="bg-slate-800 rounded-lg p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-semibold">
-                {editingPromo ? "Edit Promotion" : "Create Promotion"}
+                {editingPromo && editingPromo.id ? "Edit Promotion" : "Create Promotion"}
               </h2>
               <button
                 onClick={handleCancel}
