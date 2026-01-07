@@ -509,11 +509,37 @@ export default function AdminPage() {
                     />
                     <span>High-Range Outcome</span>
                   </label>
+                  {/* Birthday trigger (lifecycle-based, non-gameplay) */}
+                  <label className="flex items-center gap-2 p-3 border border-slate-600 rounded hover:bg-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="triggerFamily"
+                      value="birthday"
+                      checked={(formData.trigger as any)?.type === "birthday"}
+                      onChange={() =>
+                        setFormData({
+                          ...formData,
+                          // For birthday we rely on trigger.type in the engine/model
+                          trigger: {
+                            ...(formData.trigger as any),
+                            type: "birthday",
+                            offsetDays: (formData.trigger as any)?.offsetDays ?? 0,
+                          } as any,
+                          // Clear gameplay-related fields for birthday
+                          scope: undefined,
+                          mechanic: undefined,
+                          requiresOptIn: false,
+                        })
+                      }
+                      className="w-5 h-5"
+                    />
+                    <span>Birthday</span>
+                  </label>
                 </div>
               </div>
 
               {/* STEP 2: CONDITIONAL PARAMETERS */}
-              {formData.trigger?.family && (
+              {formData.trigger && (formData.trigger as any).type !== "birthday" && formData.trigger.family && (
                 <div className="p-4 bg-slate-700/50 rounded">
                   <h3 className="font-semibold mb-3">Step 2: Trigger Parameters</h3>
 
@@ -860,8 +886,90 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* SCOPE */}
-              {formData.trigger?.family && (
+              {/* BIRTHDAY TRIGGER PARAMETERS */}
+              {(formData.trigger as any)?.type === "birthday" && (
+                <div className="p-4 bg-slate-700/50 rounded">
+                  <h3 className="font-semibold mb-3">Step 2: Birthday Parameters</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block mb-2">
+                        Birthday Offset (days)
+                      </label>
+                      <input
+                        type="number"
+                        value={(formData.trigger as any)?.offsetDays ?? 0}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            trigger: {
+                              ...(formData.trigger as any),
+                              type: "birthday",
+                              offsetDays: parseInt(e.target.value, 10) || 0,
+                            } as any,
+                          })
+                        }
+                        className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        0 = on birthday, negative = days before, positive = days after.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold mb-2">Reward</h4>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block mb-1 text-sm">Label</label>
+                          <input
+                            type="text"
+                            value={formData.defaultReward?.label || ""}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                defaultReward: {
+                                  type: formData.defaultReward?.type || "instant_reward",
+                                  amount: formData.defaultReward?.amount,
+                                  label: e.target.value,
+                                },
+                              })
+                            }
+                            className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                            placeholder="Birthday reward"
+                          />
+                        </div>
+                        <div>
+                          <label className="block mb-1 text-sm">Amount</label>
+                          <input
+                            type="number"
+                            value={
+                              formData.defaultReward?.amount !== undefined
+                                ? formData.defaultReward.amount
+                                : ""
+                            }
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                defaultReward: {
+                                  type: formData.defaultReward?.type || "instant_reward",
+                                  amount: e.target.value
+                                    ? parseFloat(e.target.value)
+                                    : undefined,
+                                  label:
+                                    formData.defaultReward?.label || "Birthday reward",
+                                },
+                              })
+                            }
+                            className="w-full px-4 py-2 bg-slate-700 rounded text-white"
+                            placeholder="e.g., 50"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SCOPE (hidden for birthday) */}
+              {formData.trigger && (formData.trigger as any).type !== "birthday" && formData.trigger.family && (
                 <div className="p-4 bg-slate-700/50 rounded">
                   <h3 className="font-semibold mb-3">Scope / Filters</h3>
                   <div className="space-y-4">
@@ -944,8 +1052,8 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* MECHANIC */}
-              {formData.trigger?.family && (
+              {/* MECHANIC (hidden for birthday) */}
+              {formData.trigger && (formData.trigger as any).type !== "birthday" && formData.trigger.family && (
                 <div className="p-4 bg-slate-700/50 rounded">
                   <h3 className="font-semibold mb-3">Mechanic</h3>
                   <div className="space-y-4">
@@ -1042,8 +1150,8 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* OPT-IN */}
-              {formData.trigger?.family && (
+              {/* OPT-IN (hidden for birthday) */}
+              {formData.trigger && (formData.trigger as any).type !== "birthday" && formData.trigger.family && (
                 <div className="p-4 bg-slate-700/50 rounded">
                   <h3 className="font-semibold mb-3">Opt-In (Gate Only)</h3>
                   <label className="flex items-center gap-2">
@@ -1066,8 +1174,8 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* LIMITS */}
-              {formData.trigger?.family && (
+              {/* LIMITS (hidden for birthday) */}
+              {formData.trigger && (formData.trigger as any).type !== "birthday" && formData.trigger.family && (
                 <div className="p-4 bg-slate-700/50 rounded">
                   <h3 className="font-semibold mb-3">Limits</h3>
                   <div className="grid grid-cols-3 gap-4">

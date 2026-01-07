@@ -42,3 +42,5 @@ export function getGamesByVertical(vertical: Game["vertical"]): Game[] {
   return GAMES.filter((g) => g.vertical === vertical);
 }
 
+
+
